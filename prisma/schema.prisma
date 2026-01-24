@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id          String   @id @default(uuid())
+  studentId   String   @unique // 学号
+  password    String   // 密码
+  name        String
+  gender      String   // "male" | "female"
+  major       String
+  bedTime     Int      // 0-23
+  wakeTime    Int      // 0-23
+  isSmoker    Boolean  @default(false)
+  hobbies     String   // JSON string
+  personality String   // MBTI
+  
+  assignedDormId String?
+  assignedDorm   Dorm?   @relation(fields: [assignedDormId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SystemOption {
+  id    String @id @default(uuid())
+  type  String // "major" | "hobby"
+  value String
+
+  createdAt DateTime @default(now())
+}
+
+
+model Dorm {
+  id              String    @id @default(uuid())
+  name            String    // Room Number e.g. "101"
+  capacity        Int       @default(4)
+  gender          String    // "male" | "female"
+  majorPreference String?   // Optional: preferred major for this room
+
+  students Student[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
