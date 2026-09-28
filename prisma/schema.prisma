@@ -42,6 +42,8 @@ model Dorm {
   capacity        Int       @default(4)
   gender          String    // "male" | "female"
   majorPreference String?   // Optional: preferred major for this room
+  matchScore      Int?      // 0-100 overall match score for this room
+  matchReasons    String?   // JSON string array of explainable reasons
 
   students Student[]
 

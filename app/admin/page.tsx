@@ -28,6 +28,8 @@ type Dorm = {
     name: string
     gender: string
     capacity: number
+    matchScore: number | null
+    matchReasons: string | null
     students: Student[]
 }
 
@@ -412,13 +414,29 @@ export default function AdminDashboard() {
                             <motion.div layout key={dorm.id} initial={{ scale: 0.9 }} animate={{ scale: 1 }}>
                                 <Card className="bg-gray-900 border-gray-800 hover:border-indigo-500/30 transition-colors">
                                     <CardHeader className="pb-2">
-                                        <div className="flex justify-between">
+                                        <div className="flex justify-between items-center">
                                             <CardTitle className="text-lg text-indigo-300">{dorm.name}</CardTitle>
-                                            <span className="text-xs text-gray-500 uppercase px-2 py-1 bg-gray-800 rounded">{dorm.gender === 'male' ? '男生寝室' : '女生寝室'}</span>
+                                            <div className="flex items-center gap-2">
+                                                {typeof dorm.matchScore === 'number' && (
+                                                    <Badge variant="secondary" className={scoreBadgeClass(dorm.matchScore)}>
+                                                        匹配 {dorm.matchScore} 分
+                                                    </Badge>
+                                                )}
+                                                <span className="text-xs text-gray-500 uppercase px-2 py-1 bg-gray-800 rounded">{dorm.gender === 'male' ? '男生寝室' : '女生寝室'}</span>
+                                            </div>
                                         </div>
                                     </CardHeader>
                                     <CardContent>
                                         <div className="space-y-2">
+                                            {(() => {
+                                                try {
+                                                    const rs = dorm.matchReasons ? JSON.parse(dorm.matchReasons) : [];
+                                                    if (Array.isArray(rs) && rs.length > 0) {
+                                                        return <p className="text-xs text-gray-500 leading-relaxed">{rs.join(' · ')}</p>;
+                                                    }
+                                                } catch { /* ignore */ }
+                                                return null;
+                                            })()}
                                             {dorm.students.map(s => (
                                                 <div key={s.id} className="text-sm bg-gray-800/50 p-2 rounded flex justify-between items-center group cursor-pointer hover:bg-gray-800" onClick={() => setViewStudent(s)}>
                                                     <div className="flex gap-2">
@@ -533,6 +551,13 @@ export default function AdminDashboard() {
 
         </div>
     )
+}
+
+// 匹配分徽章配色：高分绿色，中等琥珀，低分灰
+function scoreBadgeClass(score: number) {
+    if (score >= 80) return "bg-green-500/15 text-green-400 border border-green-500/30"
+    if (score >= 60) return "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+    return "bg-gray-800 text-gray-400 border border-gray-700"
 }
 
 function StatsCard({ title, value, icon }: { title: string, value: any, icon: React.ReactNode }) {

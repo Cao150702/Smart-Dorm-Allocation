@@ -1,12 +1,29 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { Student } from '@prisma/client';
+import { buildRooms, scoreRoom, DORM_CAPACITY } from '@/lib/matching';
 
-const DORM_CAPACITY = 4;
+// 确定性房号：男 M101、M102…；女 F101、F102…（从库中现有同性别房号继续递增）
+async function nextRoomName(gender: string): Promise<string> {
+    const prefix = gender === 'male' ? 'M1' : 'F1';
+    const existing = await prisma.dorm.findMany({
+        where: { gender },
+        select: { name: true },
+    });
+
+    let max = 0;
+    for (const d of existing) {
+        const m = d.name.match(/^[MF]1(\d+)$/);
+        if (m) {
+            const n = parseInt(m[1], 10);
+            if (n > max) max = n;
+        }
+    }
+    return `${prefix}${String(max + 1).padStart(2, '0')}`;
+}
 
 export async function POST() {
     try {
-        // 1. Fetch unallocated students
+        // 1. 取出所有未分配学生
         const unallocatedStudents = await prisma.student.findMany({
             where: { assignedDormId: null },
         });
@@ -16,82 +33,74 @@ export async function POST() {
         }
 
         let allocatedCount = 0;
+        const dormSummaries: Array<{
+            name: string;
+            gender: string;
+            size: number;
+            matchScore: number;
+            matchReasons: string[];
+        }> = [];
 
-        // 2. Separate by Gender
-        const studentsByGender: Record<string, Student[]> = {
+        // 2. 按性别分组（硬约束：同性同房）
+        const byGender: Record<'male' | 'female', typeof unallocatedStudents> = {
             male: unallocatedStudents.filter(s => s.gender === 'male'),
             female: unallocatedStudents.filter(s => s.gender === 'female'),
         };
 
-        for (const gender of ['male', 'female']) {
-            const students = studentsByGender[gender];
+        for (const gender of ['male', 'female'] as const) {
+            const students = byGender[gender];
             if (students.length === 0) continue;
 
-            // 3. Group by Major
-            const studentsByMajor: Record<string, Student[]> = {};
-            const leftovers: Student[] = [];
+            // 3. 组队：吸烟者优先同房 + 最相似配对扩到 4 人 + 尾数兜底
+            const rooms = buildRooms(students);
 
-            students.forEach(s => {
-                if (!studentsByMajor[s.major]) studentsByMajor[s.major] = [];
-                studentsByMajor[s.major].push(s);
-            });
+            for (const room of rooms) {
+                const { matchScore, matchReasons } = scoreRoom(room.members);
+                const majors = new Set(room.members.map(s => s.major));
+                const majorPreference = majors.size === 1 ? room.members[0].major : 'Mixed';
 
-            // 4. Process each major
-            for (const major in studentsByMajor) {
-                let majorStudents = studentsByMajor[major];
+                const dormName = await nextRoomName(gender);
 
-                // Sort by BedTime to group similar sleep schedules
-                majorStudents.sort((a, b) => a.bedTime - b.bedTime);
+                const dorm = await prisma.dorm.create({
+                    data: {
+                        name: dormName,
+                        capacity: DORM_CAPACITY,
+                        gender,
+                        majorPreference,
+                        matchScore,
+                        matchReasons: JSON.stringify(matchReasons),
+                    },
+                });
 
-                while (majorStudents.length >= DORM_CAPACITY) {
-                    const roomStudents = majorStudents.splice(0, DORM_CAPACITY);
-                    await createDormAndAssign(roomStudents, gender, major);
-                    allocatedCount += roomStudents.length;
-                }
+                await prisma.student.updateMany({
+                    where: { id: { in: room.members.map(s => s.id) } },
+                    data: { assignedDormId: dorm.id },
+                });
 
-                // Remaining students (< 4) go to leftovers
-                leftovers.push(...majorStudents);
-            }
-
-            // 5. Process leftovers (Mixed majors)
-            // Sort by BedTime again
-            leftovers.sort((a, b) => a.bedTime - b.bedTime);
-
-            while (leftovers.length > 0) {
-                // Take up to DORM_CAPACITY
-                const roomStudents = leftovers.splice(0, DORM_CAPACITY);
-                // If we have very few students left (e.g. 1), we still give them a room in this MVP
-                await createDormAndAssign(roomStudents, gender, 'Mixed');
-                allocatedCount += roomStudents.length;
+                allocatedCount += room.members.length;
+                dormSummaries.push({
+                    name: dormName,
+                    gender,
+                    size: room.members.length,
+                    matchScore,
+                    matchReasons,
+                });
             }
         }
 
-        return NextResponse.json({ success: true, allocatedCount });
+        const averageScore = dormSummaries.length
+            ? Math.round(dormSummaries.reduce((acc, d) => acc + d.matchScore, 0) / dormSummaries.length)
+            : 0;
+
+        return NextResponse.json({
+            success: true,
+            allocatedCount,
+            averageScore,
+            dorms: dormSummaries,
+        });
 
     } catch (error) {
         console.error("Allocation error:", error);
-        return NextResponse.json({ error: "Details allocation failed" }, { status: 500 });
+        return NextResponse.json({ error: "Dorm allocation failed" }, { status: 500 });
     }
-}
-
-async function createDormAndAssign(students: Student[], gender: string, majorPreference: string) {
-    // Create a new Dorm
-    // We can generate a generic name e.g. "Auto-X"
-    // For better naming, we'd need to query existing count or use UUID
-    const dormName = `Room-${Math.floor(Math.random() * 10000)}`;
-
-    const dorm = await prisma.dorm.create({
-        data: {
-            name: dormName,
-            capacity: DORM_CAPACITY,
-            gender: gender,
-            majorPreference: majorPreference,
-        },
-    });
-
-    // Update students
-    await prisma.student.updateMany({
-        where: { id: { in: students.map(s => s.id) } },
-        data: { assignedDormId: dorm.id },
-    });
 }
