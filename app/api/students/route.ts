@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { hashPassword } from '@/lib/password';
 import { z } from 'zod';
 
 const studentSchema = z.object({
@@ -38,11 +39,14 @@ export async function POST(request: Request) {
         const student = await prisma.student.create({
             data: {
                 ...data,
+                password: await hashPassword(data.password),
                 hobbies: JSON.stringify(data.hobbies),
             },
         });
 
-        return NextResponse.json({ success: true, student });
+        const { password: _password, ...safeStudent } = student;
+
+        return NextResponse.json({ success: true, student: safeStudent });
     } catch (error) {
         console.error("Error creating student:", error);
         return NextResponse.json({ error: "注册失败" }, { status: 500 });
