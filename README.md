@@ -31,12 +31,17 @@
    npm install
    ```
 
-2. **初始化数据库**
+2. **配置环境变量**
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **初始化数据库**
    ```bash
    npx prisma db push
    ```
 
-3. **启动开发服务器**
+4. **启动开发服务器**
    ```bash
    npm run dev
    ```
