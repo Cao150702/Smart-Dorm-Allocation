@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, isHashed, verifyPassword } from '@/lib/password';
+import { studentResponseSelect } from '@/lib/student-response';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -21,22 +22,26 @@ export async function POST(request: Request) {
 
         const student = await prisma.student.findUnique({
             where: { studentId },
+            select: { ...studentResponseSelect, password: true },
         });
 
-        if (!student || !(await verifyPassword(password, student.password))) {
+        if (!student) {
+            return NextResponse.json({ error: "学号或密码错误" }, { status: 401 });
+        }
+
+        // Only fetch the credential for verification; never put it in the response.
+        const { password: storedPassword, ...safeStudent } = student;
+        if (!(await verifyPassword(password, storedPassword))) {
             return NextResponse.json({ error: "学号或密码错误" }, { status: 401 });
         }
 
         // 老数据存的是明文，登录成功时顺手升级成哈希。
-        if (!isHashed(student.password)) {
+        if (!isHashed(storedPassword)) {
             await prisma.student.update({
                 where: { id: student.id },
                 data: { password: await hashPassword(password) },
             });
         }
-
-        // 返回给前端的内容里不能带密码（哪怕是哈希）。
-        const { password: _password, ...safeStudent } = student;
 
         // In a real app, we would set a session cookie here.
         // For this prototype, we return the student data and handle state on frontend.
@@ -47,3 +52,4 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "登录失败" }, { status: 500 });
     }
 }
+

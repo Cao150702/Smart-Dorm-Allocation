@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { studentResponseSelect } from '@/lib/student-response';
 
 export async function GET() {
     try {
@@ -11,12 +12,12 @@ export async function GET() {
         const totalDorms = await prisma.dorm.count();
 
         const students = await prisma.student.findMany({
-            include: { assignedDorm: true },
+            select: { ...studentResponseSelect, assignedDorm: true },
             orderBy: { createdAt: 'desc' },
         });
 
         const dorms = await prisma.dorm.findMany({
-            include: { students: true },
+            include: { students: { select: studentResponseSelect } },
         });
 
         return NextResponse.json({
@@ -34,3 +35,4 @@ export async function GET() {
         return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });
     }
 }
+

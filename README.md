@@ -47,6 +47,19 @@
    ```
    访问 [http://localhost:3000](http://localhost:3000)
 
+## 测试
+
+```bash
+npm test
+npx tsc --noEmit
+npm run lint
+npm run build
+```
+
+`npm test` 会生成 Prisma Client，并使用临时 SQLite 数据库和合成学生数据调用真实 API 处理函数，验证学生查询、更新、录入、登录和管理员数据（包括寝室内嵌学生）不会返回密码或密码哈希，同时检查响应字段、分配关系和统计信息。测试结束后会删除临时数据库，不使用应用配置的数据库，也不访问线上服务。
+
+本次回归测试只覆盖响应中的凭据保护，不代表已实现登录会话或接口访问控制；对外部署前仍需补充学生身份校验和管理员权限校验。
+
 ## 使用指南
 
 ### 学生
@@ -158,3 +171,4 @@ sudo systemctl restart nginx
 ```
 
 现在直接访问 `http://你的IP` 即可！
+

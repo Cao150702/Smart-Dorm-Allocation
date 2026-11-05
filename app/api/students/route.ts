@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
+import { studentResponseSelect } from '@/lib/student-response';
 import { z } from 'zod';
 
 const studentSchema = z.object({
@@ -29,7 +30,8 @@ export async function POST(request: Request) {
 
         // Check if studentId exists
         const existing = await prisma.student.findUnique({
-            where: { studentId: data.studentId }
+            where: { studentId: data.studentId },
+            select: { id: true },
         });
 
         if (existing) {
@@ -42,13 +44,13 @@ export async function POST(request: Request) {
                 password: await hashPassword(data.password),
                 hobbies: JSON.stringify(data.hobbies),
             },
+            select: studentResponseSelect,
         });
 
-        const { password: _password, ...safeStudent } = student;
-
-        return NextResponse.json({ success: true, student: safeStudent });
+        return NextResponse.json({ success: true, student });
     } catch (error) {
         console.error("Error creating student:", error);
         return NextResponse.json({ error: "注册失败" }, { status: 500 });
     }
 }
+
